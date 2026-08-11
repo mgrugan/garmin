@@ -4,7 +4,13 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
-import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
+// Phosphor is the single icon family for this project (see DESIGN.md); shadcn
+// ships against lucide, so the three glyphs it needs are aliased here.
+import {
+  CaretDown as ChevronDownIcon,
+  CaretUp as ChevronUpIcon,
+  Check as CheckIcon,
+} from "@phosphor-icons/react"
 
 const Select = SelectPrimitive.Root
 
