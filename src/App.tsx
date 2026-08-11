@@ -63,11 +63,11 @@ export default function App() {
   // Opens on the widest range that still contains data — a one-week export on a
   // 90-day window reads as 83 days of missing data rather than a short history.
   const [range, setRange] = useState<RangeKey>(() => defaultRangeFor(dataset));
-  const [units, setUnits] = useState<UnitSystem>("metric");
+  const [units, setUnits] = useState<UnitSystem>("imperial");
   const [importing, setImporting] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const deck = useDeck(dataset, range);
+  const deck = useDeck(dataset, range, units);
 
   const setProfile = (patch: Partial<UserProfile>) =>
     setDataset((d) => ({ ...d, profile: { ...d.profile, ...patch } }));

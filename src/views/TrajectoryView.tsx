@@ -40,8 +40,11 @@ import { bodyFromWeight, computeTdee, leanRetentionFactor } from "@/lib/model/en
 import {
   horizonPhrase,
   kgUnit,
+  proteinTargetRange,
+  proteinUnit,
   signed,
   toDisplayMass,
+  toDisplayProtein,
   type UnitSystem,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -87,8 +90,9 @@ export function TrajectoryView({
       strengthSessionsPerWeek: strength,
       days: weeks * 7,
       modelAdaptation: adaptation,
+      units,
     }),
-    [dataset.profile, b, intake, steps, exercise, protein, strength, weeks, adaptation],
+    [dataset.profile, b, intake, steps, exercise, protein, strength, weeks, adaptation, units],
   );
 
   const sim = useMemo(() => simulate(inputs), [inputs]);
@@ -285,10 +289,10 @@ export function TrajectoryView({
             <Control
               icon={<Bathtub size={15} weight="fill" aria-hidden="true" />}
               label="Protein"
-              value={protein.toFixed(1)}
-              unit="g/kg"
+              value={toDisplayProtein(protein, units).toFixed(2)}
+              unit={proteinUnit(units)}
               accent="mass"
-              hint={`${Math.round(protein * b.weightKg)} g/day — ${protein >= 1.6 ? "in the muscle-sparing range" : "below the muscle-sparing range"}`}
+              hint={`${Math.round(protein * b.weightKg)} g/day — ${protein >= 1.6 ? "inside" : "below"} the muscle-sparing ${proteinTargetRange(units)}`}
             >
               <NumberSlider
                 value={protein}

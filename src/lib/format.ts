@@ -28,6 +28,24 @@ export function fromDisplayMass(value: number, units: UnitSystem): number {
   return units === "imperial" ? value / LB_PER_KG : value;
 }
 
+/**
+ * Protein is modelled in g/kg — the unit the literature uses — but read in
+ * g/lb by anyone thinking in pounds, where "about a gram per pound" is the
+ * familiar rule of thumb (and lands at 2.2 g/kg, the top of the useful range).
+ */
+export function toDisplayProtein(gPerKg: number, units: UnitSystem): number {
+  return units === "imperial" ? gPerKg / LB_PER_KG : gPerKg;
+}
+
+export function proteinUnit(units: UnitSystem): string {
+  return units === "imperial" ? "g/lb" : "g/kg";
+}
+
+/** The muscle-sparing band, 1.6–2.2 g/kg, written in the reader's unit. */
+export function proteinTargetRange(units: UnitSystem): string {
+  return units === "imperial" ? "0.7–1.0 g/lb" : "1.6–2.2 g/kg";
+}
+
 export function km(value: number, units: UnitSystem, dp = 1): string {
   return units === "imperial" ? (value * MI_PER_KM).toFixed(dp) : value.toFixed(dp);
 }

@@ -26,6 +26,7 @@ import {
   zoneMinutes,
 } from "../garmin/derive";
 import { fitTrend, isTrendMeaningful, slopePerMonth, type Series } from "./forecast";
+import { kgUnit, toDisplayMass, type UnitSystem } from "../format";
 import type { ActivityRecord, DayRecord, GarminDataset, SleepRecord } from "../garmin/types";
 
 export type InsightCategory = "training" | "recovery" | "body" | "consistency";
@@ -52,19 +53,28 @@ export interface InsightContext {
   activities: ActivityRecord[];
   load: LoadPoint[];
   maxHr: number;
+  /** Insight copy quotes masses, so it has to know which unit to write. */
+  units: UnitSystem;
+  /** The reader's actual body mass — step-cost effects scale with it. */
+  weightKg: number;
 }
 
 export function buildInsights(ctx: InsightContext): Insight[] {
   const out: Insight[] = [];
-  const { days, sleep, activities, load, maxHr } = ctx;
+  const { days, sleep, activities, load, maxHr, units, weightKg } = ctx;
 
   out.push(...sleepInsights(sleep));
   out.push(...loadInsights(load, activities, maxHr));
   out.push(...cardiacInsights(ctx.dataset, days, sleep));
-  out.push(...consistencyInsights(days, activities));
-  out.push(...bodyInsights(ctx.dataset));
+  out.push(...consistencyInsights(days, activities, units, weightKg));
+  out.push(...bodyInsights(ctx.dataset, units));
 
   return out.sort((a, b) => b.priority - a.priority);
+}
+
+/** Mass written in the reader's unit, e.g. "0.66 lb". */
+function mass(kg: number, units: UnitSystem, dp = 2): string {
+  return `${toDisplayMass(kg, units).toFixed(dp)} ${kgUnit(units)}`;
 }
 
 /* ── sleep ──────────────────────────────────────────────────────────────── */
@@ -284,7 +294,12 @@ function cardiacInsights(dataset: GarminDataset, days: DayRecord[], sleep: Sleep
 
 /* ── consistency ────────────────────────────────────────────────────────── */
 
-function consistencyInsights(days: DayRecord[], activities: ActivityRecord[]): Insight[] {
+function consistencyInsights(
+  days: DayRecord[],
+  activities: ActivityRecord[],
+  units: UnitSystem,
+  weightKg: number,
+): Insight[] {
   const out: Insight[] = [];
   if (days.length < 28) return out;
 
@@ -299,7 +314,7 @@ function consistencyInsights(days: DayRecord[], activities: ActivityRecord[]): I
       title: `Averaging ${Math.round(avgSteps).toLocaleString()} steps a day`,
       evidence: `Daily movement outside workouts is the largest and most controllable part of expenditure. You are ${Math.round(gap).toLocaleString()} short of 8,000.`,
       action: "Two 15-minute walks cover most of the gap and cost nothing in recovery, unlike adding a session.",
-      effect: `Roughly ${Math.round((gap / 1389) * 0.53 * 84)} kcal/day at your body mass — about ${(((gap / 1389) * 0.53 * 84 * 30) / 7700).toFixed(1)} kg over a month, all else equal.`,
+      effect: `Roughly ${Math.round((gap / 1389) * 0.53 * weightKg)} kcal/day at your body mass — about ${mass(((gap / 1389) * 0.53 * weightKg * 30) / 7700, units, 1)} over a month, all else equal.`,
       priority: 74,
       tone: "warn",
     });
@@ -331,7 +346,7 @@ function consistencyInsights(days: DayRecord[], activities: ActivityRecord[]): I
 
 /* ── body composition ───────────────────────────────────────────────────── */
 
-function bodyInsights(dataset: GarminDataset): Insight[] {
+function bodyInsights(dataset: GarminDataset, units: UnitSystem): Insight[] {
   const out: Insight[] = [];
   const w: Series[] = seriesFrom(dataset.weight, (r) => r.weightKg);
   if (w.length < 21) return out;
@@ -349,7 +364,7 @@ function bodyInsights(dataset: GarminDataset): Insight[] {
         id: "weight-plateau",
         category: "body",
         title: "Weight loss has plateaued",
-        evidence: `You were losing ${Math.abs(priorPerWeek).toFixed(2)} kg/week six weeks ago; the current trend is ${Math.abs(recentPerWeek).toFixed(2)} kg/week.`,
+        evidence: `You were losing ${mass(Math.abs(priorPerWeek), units)}/week six weeks ago; the current trend is ${mass(Math.abs(recentPerWeek), units)}/week.`,
         action:
           "A plateau at constant intake is usually adaptation plus a lighter body costing less to run, not a stalled metabolism. Use the Trajectory panel to re-solve intake for your current weight rather than the weight you started at.",
         effect: "Recalculating typically finds a 100–200 kcal gap that has quietly opened as you lost mass.",
@@ -360,8 +375,8 @@ function bodyInsights(dataset: GarminDataset): Insight[] {
       out.push({
         id: "weight-trending",
         category: "body",
-        title: `Losing ${Math.abs(recentPerWeek).toFixed(2)} kg per week`,
-        evidence: `The robust 6-week trend is ${recentPerWeek.toFixed(2)} kg/week, which is ${((Math.abs(recentPerWeek) / w[w.length - 1].value) * 100).toFixed(2)}% of body weight.`,
+        title: `Losing ${mass(Math.abs(recentPerWeek), units)} per week`,
+        evidence: `The robust 6-week trend is ${mass(recentPerWeek, units)}/week, which is ${((Math.abs(recentPerWeek) / w[w.length - 1].value) * 100).toFixed(2)}% of body weight.`,
         action:
           Math.abs(recentPerWeek) / w[w.length - 1].value > 0.01
             ? "This is above 1% of body weight per week — easing the deficit will protect more lean mass for a similar fat loss."

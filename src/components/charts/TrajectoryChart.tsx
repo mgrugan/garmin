@@ -158,7 +158,10 @@ export function TrajectoryChart({
                 strokeWidth={1.5}
                 label={{
                   value: `GOAL ${toDisplayMass(goalKg, units).toFixed(1)}`,
-                  position: "insideTopRight",
+                  // Bottom-left: a declining projection converges on the goal
+                  // line at the right edge, so a right-anchored label lands
+                  // exactly on the crossing point.
+                  position: "insideBottomLeft",
                   fill: "#b8f23c",
                   fontSize: 9,
                   fontFamily: "JetBrains Mono Variable, monospace",

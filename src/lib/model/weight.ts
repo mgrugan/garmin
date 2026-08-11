@@ -25,6 +25,7 @@ import {
   tissueEnergyDensity,
 } from "./energy";
 import type { UserProfile } from "../garmin/types";
+import { proteinTargetRange, proteinUnit, toDisplayProtein, type UnitSystem } from "../format";
 
 export interface SimulationInputs {
   profile: UserProfile;
@@ -42,6 +43,8 @@ export interface SimulationInputs {
   days: number;
   /** Off makes the model naive on purpose, for comparison. */
   modelAdaptation: boolean;
+  /** Display only — decides whether warnings say g/kg or g/lb. */
+  units?: UnitSystem;
 }
 
 export interface SimPoint {
@@ -232,7 +235,7 @@ function buildWarnings(input: SimulationInputs, points: SimPoint[], tdee: number
     out.push({
       level: "info",
       title: "Protein below the muscle-sparing range",
-      detail: `At ${input.proteinGPerKg.toFixed(1)} g/kg you are under the 1.6–2.2 g/kg that best protects lean mass in a deficit. Raising it changes the fat/lean split without changing calories.`,
+      detail: `At ${toDisplayProtein(input.proteinGPerKg, input.units ?? "metric").toFixed(2)} ${proteinUnit(input.units ?? "metric")} you are under the ${proteinTargetRange(input.units ?? "metric")} that best protects lean mass in a deficit. Raising it changes the fat/lean split without changing calories.`,
     });
   }
 

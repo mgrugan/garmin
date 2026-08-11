@@ -36,6 +36,7 @@ import type {
   WeightRecord,
 } from "./garmin/types";
 import { fitTrend, type Series, type TrendFit } from "./model/forecast";
+import type { UnitSystem } from "./format";
 import { buildInsights, type Insight } from "./model/insights";
 import {
   bodyFromWeight,
@@ -130,11 +131,15 @@ export interface Deck {
   fullDays: DayRecord[];
 }
 
-export function useDeck(dataset: GarminDataset, range: RangeKey): Deck {
-  return useMemo(() => buildDeck(dataset, range), [dataset, range]);
+export function useDeck(dataset: GarminDataset, range: RangeKey, units: UnitSystem): Deck {
+  return useMemo(() => buildDeck(dataset, range, units), [dataset, range, units]);
 }
 
-export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
+export function buildDeck(
+  dataset: GarminDataset,
+  range: RangeKey,
+  units: UnitSystem = "metric",
+): Deck {
   const cutoff = cutoffFor(dataset, range);
 
   const days = withinRange(dataset.days, cutoff);
@@ -272,7 +277,16 @@ export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
       .sort((a, b) => b.minutes - a.minutes),
   };
 
-  const insights = buildInsights({ dataset, days, sleep, activities, load, maxHr });
+  const insights = buildInsights({
+    dataset,
+    days,
+    sleep,
+    activities,
+    load,
+    maxHr,
+    units,
+    weightKg: startWeightKg,
+  });
   const spanDays = datasetSpanDays(dataset);
 
   return {
