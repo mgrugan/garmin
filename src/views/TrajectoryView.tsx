@@ -157,11 +157,15 @@ export function TrajectoryView({
           footnote={`maintenance is ${Math.round(sim.initialTdee).toLocaleString()} kcal today`}
         />
         <StatTile
-          label="Body fat"
+          label={b.hasBodyComp ? "Body fat" : "Body fat (estimated)"}
           value={sim.end.bodyFatPct.toFixed(1)}
           unit="%"
           accent="mass"
-          footnote={`${signed(sim.end.bodyFatPct - sim.start.bodyFatPct, 1)} pts from ${sim.start.bodyFatPct.toFixed(1)}%`}
+          footnote={
+            b.hasBodyComp
+              ? `${signed(sim.end.bodyFatPct - sim.start.bodyFatPct, 1)} pts from ${sim.start.bodyFatPct.toFixed(1)}%`
+              : `from ${sim.start.bodyFatPct.toFixed(1)}%, estimated from BMI and age — no scale reading in your export`
+          }
         />
       </div>
 
@@ -405,6 +409,27 @@ export function TrajectoryView({
           {/* ── energy split ─────────────────────────────────────────── */}
           <Panel label="Energy budget" sub="Where today's burn goes, at your current settings.">
             <TdeeSplitChart breakdown={breakdown} intake={intake} />
+
+            {b.garminBmrKcal !== undefined &&
+              Math.abs(b.garminBmrKcal - b.bmrKcal) / b.bmrKcal > 0.1 && (
+                <p className="mt-4 flex gap-2 border-t border-line pt-3.5 text-[12px] leading-relaxed text-ink-faint">
+                  <Info size={14} className="mt-px shrink-0" aria-hidden="true" />
+                  <span>
+                    Your watch reports a resting burn of{" "}
+                    <span className="font-mono text-ink-muted">
+                      {Math.round(b.garminBmrKcal).toLocaleString()}
+                    </span>{" "}
+                    kcal against the{" "}
+                    <span className="font-mono text-ink-muted">
+                      {Math.round(b.bmrKcal).toLocaleString()}
+                    </span>{" "}
+                    used here. Garmin's figure runs high for most people, and the
+                    equations in this model are the better-validated ones — but if you
+                    know your maintenance sits nearer the higher number, everything
+                    above shifts up by the difference.
+                  </span>
+                </p>
+              )}
           </Panel>
         </div>
       </div>

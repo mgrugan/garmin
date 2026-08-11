@@ -248,6 +248,7 @@ function makeActivity(
     hike: { min: 96, speedKmh: 4.3, hr: 118 },
     strength: { min: 47, speedKmh: 0, hr: 118 },
     cardio: { min: 36, speedKmh: 0, hr: 143 },
+    martial: { min: 62, speedKmh: 0, hr: 152 },
     yoga: { min: 42, speedKmh: 0, hr: 92 },
     other: { min: 40, speedKmh: 0, hr: 120 },
   }[type];
@@ -262,7 +263,7 @@ function makeActivity(
   const maxHr = Math.round(clamp(avgHr + 14 + rand() * 16, avgHr + 5, 198));
 
   // MET-based, matching the fallback in the energy model.
-  const met = { run: 9.8, ride: 7.5, swim: 8.3, walk: 3.5, hike: 6, strength: 5, cardio: 7, yoga: 3, other: 5 }[type];
+  const met = { run: 9.8, ride: 7.5, swim: 8.3, walk: 3.5, hike: 6, strength: 5, cardio: 7, martial: 9.5, yoga: 3, other: 5 }[type];
   const calories = Math.round((met * 3.5 * 84 * durationMin) / 200 + gauss() * 25);
 
   return {
@@ -286,6 +287,7 @@ function makeActivity(
 }
 
 const TITLE: Record<ActivityType, string> = {
+  martial: "Muay thai",
   run: "Run",
   ride: "Ride",
   swim: "Pool swim",

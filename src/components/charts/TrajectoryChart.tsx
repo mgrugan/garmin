@@ -119,6 +119,9 @@ export function TrajectoryChart({
   }, [history, simulation, units, goalKg]);
 
   const unit = kgUnit(units);
+  // Below ~15 weigh-ins a connected line reads as noise, and a single reading
+  // draws nothing at all.
+  const sparse = history.length < 15;
 
   return (
     <div className="flex flex-col gap-3">
@@ -178,13 +181,15 @@ export function TrajectoryChart({
               }}
             />
 
-            {/* Raw weigh-ins, deliberately faint — the trend is the signal. */}
+            {/* Raw weigh-ins, deliberately faint — the trend is the signal.
+                With only a handful of readings a line is invisible (one point
+                draws nothing at all), so sparse history falls back to dots. */}
             <Line
               dataKey="actual"
               stroke={MASS}
-              strokeOpacity={0.28}
+              strokeOpacity={sparse ? 0 : 0.28}
               strokeWidth={1}
-              dot={false}
+              dot={sparse ? { r: 3, fill: MASS, stroke: "none" } : false}
               isAnimationActive={false}
               connectNulls
             />

@@ -120,6 +120,7 @@ const MET_BY_TYPE: Record<string, number> = {
   hike: 6.0,
   strength: 5.0,
   cardio: 7.0,
+  martial: 9.5,
   yoga: 3.0,
   other: 5.0,
 };

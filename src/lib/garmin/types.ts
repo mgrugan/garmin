@@ -20,6 +20,8 @@ export interface DayRecord {
   /** Total burn Garmin attributes to the day, kcal. */
   caloriesTotal?: number;
   caloriesActive?: number;
+  /** Garmin's own resting figure for the day, for reconciliation. */
+  caloriesBmr?: number;
   restingHeartRate?: number;
   /** Garmin reports these separately; we keep both and sum for load. */
   intensityMinutesModerate?: number;
@@ -83,6 +85,7 @@ export type ActivityType =
   | "hike"
   | "strength"
   | "cardio"
+  | "martial"
   | "yoga"
   | "other";
 
@@ -133,6 +136,15 @@ export interface UserProfile {
   bodyFatPct?: number;
   /** Beats per minute; used to scale heart-rate zones. */
   maxHr?: number;
+  /**
+   * The five zone floors in bpm, straight from the watch's own settings.
+   * Garmin exports these in `heartRateZones.json`, and they beat any
+   * percentage-of-max estimate because they are what the device actually used
+   * when it recorded the sessions.
+   */
+  zoneFloors?: number[];
+  /** True when weight came from the export rather than a fallback default. */
+  weightFromExport?: boolean;
 }
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
@@ -143,6 +155,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   hike: "Hike",
   strength: "Strength",
   cardio: "Cardio",
+  martial: "Martial arts",
   yoga: "Yoga",
   other: "Other",
 };
@@ -152,10 +165,29 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
  * "indoor_cycling", "trail_running", localised variants…). Collapse them into
  * buckets the dashboard can actually chart, longest-match first so
  * "trail_running" doesn't get swallowed by a bare "walk" test.
+ *
+ * `title` is a fallback signal, not decoration. Garmin files anything without a
+ * dedicated activity profile — martial arts, class-based training — as plain
+ * "other", so a real training week can end up 56% "Other" while the session the
+ * person actually did is named right there in the title.
  */
-export function normaliseActivityType(raw: string | undefined): ActivityType {
+export function normaliseActivityType(
+  raw: string | undefined,
+  title?: string,
+): ActivityType {
+  const direct = matchActivityType(raw);
+  if (direct !== "other") return direct;
+
+  const fromTitle = matchActivityType(title);
+  return fromTitle !== "other" ? fromTitle : "other";
+}
+
+function matchActivityType(raw: string | undefined): ActivityType {
   const s = (raw ?? "").toLowerCase();
   if (!s) return "other";
+  // Combat sports before the generic tests: "kickboxing" must not read as "box".
+  if (/muay|thai box|kickbox|boxing|martial|mma|bjj|jiu.?jitsu|judo|karate|taekwondo|wrestl|grappl/.test(s))
+    return "martial";
   if (/tread|jog|run/.test(s)) return "run";
   if (/bike|cycl|spin/.test(s)) return "ride";
   if (/swim/.test(s)) return "swim";

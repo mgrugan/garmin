@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from "react";
-import { Panel, StatTile, EmptyState } from "@/components/primitives";
+import { CoverageNotice, Panel, StatTile, EmptyState } from "@/components/primitives";
 import {
   LoadChart,
   RatioChart,
@@ -25,6 +25,9 @@ import { cn } from "@/lib/utils";
 
 export function TrainingView({ deck, units }: { deck: Deck; units: UnitSystem }) {
   const verdict = loadVerdict(deck.current.loadRatio);
+  // Fitness is a 42-day exponential average. Below ~28 days it is mostly the
+  // seed value, so the ratio it produces says nothing about the athlete.
+  const loadReady = deck.spanDays >= 28;
 
   const vo2Forecast = useMemo(
     () => project(deck.series.vo2max.slice(-40), 90, deck.fits.vo2max),
@@ -55,6 +58,8 @@ export function TrainingView({ deck, units }: { deck: Deck; units: UnitSystem })
 
   return (
     <div className="flex flex-col gap-4">
+      <CoverageNotice spanDays={deck.spanDays} needDays={28} what="Training load" />
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Weekly volume"
@@ -65,10 +70,16 @@ export function TrainingView({ deck, units }: { deck: Deck; units: UnitSystem })
         />
         <StatTile
           label="Load balance"
-          value={deck.current.loadRatio.toFixed(2)}
-          unit="acute:chronic"
-          accent={verdict.tone === "good" ? "load" : verdict.tone === "risk" ? "cardiac" : "energy"}
-          footnote={`${verdict.label} — 0.80 to 1.30 is the productive band`}
+          value={loadReady ? deck.current.loadRatio.toFixed(2) : "—"}
+          unit={loadReady ? "acute:chronic" : undefined}
+          accent={
+            !loadReady ? "ink" : verdict.tone === "good" ? "load" : verdict.tone === "risk" ? "cardiac" : "energy"
+          }
+          footnote={
+            loadReady
+              ? `${verdict.label} — 0.80 to 1.30 is the productive band`
+              : "needs ~28 days; the 42-day baseline has not formed yet"
+          }
         />
         <StatTile
           label="Easy share"
@@ -90,7 +101,7 @@ export function TrainingView({ deck, units }: { deck: Deck; units: UnitSystem })
           }
           unit={runs.length ? `/${kmUnit(units)}` : kmUnit(units)}
           accent="cardiac"
-          footnote={runs.length ? `across ${runs.length} runs` : undefined}
+          footnote={runs.length ? `across ${runs.length} run${runs.length === 1 ? "" : "s"}` : undefined}
         />
       </div>
 
@@ -99,7 +110,14 @@ export function TrainingView({ deck, units }: { deck: Deck; units: UnitSystem })
           label="Fitness against fatigue"
           sub="Fitness is a 42-day exponential average of load; fatigue is the 7-day. The gap between them is freshness."
         >
-          <LoadChart data={deck.load} height={260} />
+          {loadReady ? (
+            <LoadChart data={deck.load} height={260} />
+          ) : (
+            <EmptyState
+              title="Not enough history for a load baseline"
+              detail={`Fitness is a 42-day average and your export covers ${deck.spanDays} days. Drawing it now would mostly plot the model's starting assumption rather than your training.`}
+            />
+          )}
         </Panel>
 
         <Panel
@@ -129,7 +147,14 @@ export function TrainingView({ deck, units }: { deck: Deck; units: UnitSystem })
           label="Acute : chronic ratio"
           sub="The shaded band is 0.80–1.30, where fitness builds without the injury-risk penalty."
         >
-          <RatioChart data={deck.load} />
+          {loadReady ? (
+            <RatioChart data={deck.load} />
+          ) : (
+            <EmptyState
+              title="Ratio needs a settled baseline"
+              detail="The acute:chronic ratio compares a 7-day load against a 42-day one. Until the longer window fills, the number is an artefact of where the average started."
+            />
+          )}
         </Panel>
 
         <Panel

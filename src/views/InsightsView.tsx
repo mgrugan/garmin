@@ -19,7 +19,7 @@ import {
   Warning,
   WarningOctagon,
 } from "@phosphor-icons/react";
-import { EmptyState, Panel } from "@/components/primitives";
+import { CoverageNotice, EmptyState, Panel } from "@/components/primitives";
 import type { Deck } from "@/lib/deck";
 import type { Insight, InsightCategory } from "@/lib/model/insights";
 import { cn } from "@/lib/utils";
@@ -50,15 +50,20 @@ export function InsightsView({ deck }: { deck: Deck }) {
     .slice(0, 8);
 
   const actionable = deck.insights.filter((i) => i.tone !== "good").length;
+  const hasAny = deck.insights.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
+      <CoverageNotice spanDays={deck.spanDays} needDays={28} what="Spotting a pattern" />
+
       <Panel
         label="Priorities"
         sub={
-          actionable === 0
-            ? "Nothing needs changing. The numbers below are working."
-            : `${actionable} thing${actionable === 1 ? "" : "s"} worth acting on, ordered by what would move the needle most.`
+          !hasAny
+            ? "No rule has enough data to fire yet — which is not the same as nothing being wrong."
+            : actionable === 0
+              ? "Nothing needs changing. The numbers below are working."
+              : `${actionable} thing${actionable === 1 ? "" : "s"} worth acting on, ordered by what would move the needle most.`
         }
         actions={
           <div className="flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface p-1">
@@ -82,14 +87,14 @@ export function InsightsView({ deck }: { deck: Deck }) {
         }
       >
         {shown.length === 0 ? (
-          <EmptyState
-            title="Nothing to report here"
-            detail={
-              filter === "all"
-                ? "Insights need a few weeks of data across sleep, training, and body mass before they can say anything useful."
-                : "No findings in this category. Try another filter."
-            }
-          />
+          filter === "all" ? (
+            <ThresholdList deck={deck} />
+          ) : (
+            <EmptyState
+              title="Nothing in this category yet"
+              detail="No findings here. Try another filter, or switch to All to see what each rule is still waiting for."
+            />
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {shown.map((i) => (
@@ -105,6 +110,55 @@ export function InsightsView({ deck }: { deck: Deck }) {
         something here conflicts with guidance from a doctor or a coach who knows your history,
         theirs wins.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Shown instead of a bare "no insights" message.
+ *
+ * Every rule has a minimum sample size, and silence from a rule is
+ * indistinguishable from "you're fine" unless the thresholds are stated. This
+ * lists what each one needs and how close the data is.
+ */
+function ThresholdList({ deck }: { deck: Deck }) {
+  const rows = [
+    { label: "Sleep patterns", have: deck.sleep.length, need: 14, unit: "nights" },
+    { label: "Training load and intensity", have: deck.spanDays, need: 28, unit: "days" },
+    { label: "Resting HR and HRV trends", have: deck.series.restingHr.length, need: 30, unit: "readings" },
+    { label: "Weight trend and plateaus", have: deck.series.weight.length, need: 21, unit: "weigh-ins" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="max-w-[70ch] text-[13px] leading-relaxed text-ink-muted">
+        Nothing yet — not because everything is fine, but because each rule needs
+        enough data to tell a pattern from a coincidence. Here is what each one is
+        waiting for.
+      </p>
+
+      <div className="flex flex-col">
+        {rows.map((r) => {
+          const pct = Math.min(100, (r.have / r.need) * 100);
+          return (
+            <div key={r.label} className="border-b border-line/60 py-2.5 last:border-0">
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="text-[13px] text-ink">{r.label}</span>
+                <span className="shrink-0 font-mono text-[12px] text-ink-muted">
+                  {r.have}
+                  <span className="text-ink-faint">/{r.need} {r.unit}</span>
+                </span>
+              </div>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-line">
+                <div
+                  className={cn("h-full rounded-full", pct >= 100 ? "bg-success" : "bg-load/60")}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -39,6 +39,9 @@ export function OverviewView({
   const c = deck.current;
   const unit = kgUnit(units);
   const verdict = loadVerdict(c.loadRatio);
+  // The acute:chronic ratio compares a 7-day average against a 42-day one.
+  // Before the long window fills it reports the seed, not the athlete.
+  const loadReady = deck.spanDays >= 28;
 
   // A 12-week look-ahead at the habits already in the data — no user input.
   // This is the "if nothing changes" line, which is the honest default.
@@ -120,7 +123,7 @@ export function OverviewView({
           accent="load"
           footnote={
             c.vo2max
-              ? fitnessAge(c.vo2max, dataset.profile.age, dataset.profile.sex)
+              ? vo2Standing(c.vo2max, dataset.profile.age, dataset.profile.sex)
               : undefined
           }
         >
@@ -152,7 +155,9 @@ export function OverviewView({
         <StatTile
           label="Steps"
           value={
-            deck.days.length ? compactNumber(mean(deck.days.map((d) => d.steps ?? 0))) : "—"
+            deck.fullDays.length
+              ? compactNumber(mean(deck.fullDays.map((d) => d.steps ?? 0)))
+              : "—"
           }
           unit="avg/day"
           accent="recovery"
@@ -170,10 +175,10 @@ export function OverviewView({
 
         <StatTile
           label="Training load"
-          value={c.loadRatio > 0 ? c.loadRatio.toFixed(2) : "—"}
-          unit="ratio"
+          value={loadReady && c.loadRatio > 0 ? c.loadRatio.toFixed(2) : "—"}
+          unit={loadReady && c.loadRatio > 0 ? "ratio" : undefined}
           accent="load"
-          footnote={verdict.label}
+          footnote={loadReady ? verdict.label : "needs ~28 days of history"}
         >
           <div className="flex h-7 items-end gap-px">
             {deck.load.slice(-40).map((p, i) => (
@@ -198,9 +203,13 @@ export function OverviewView({
       <div className="grid items-start gap-4 xl:grid-cols-[1.6fr_1fr]">
         <Panel
           label="Where this is heading"
-          sub="Twelve weeks projected from the habits already in your data, at 2,200 kcal a day."
+          sub={
+            deck.series.weight.length >= 5
+              ? "Twelve weeks projected from the habits already in your data, at 2,200 kcal a day."
+              : `Twelve weeks projected from the habits already in your data, at 2,200 kcal a day. Anchored to ${deck.series.weight.length} weigh-in${deck.series.weight.length === 1 ? "" : "s"} — more readings would tighten it.`
+          }
         >
-          {deck.series.weight.length > 5 ? (
+          {deck.series.weight.length >= 1 ? (
             <TrajectoryChart
               history={dataset.weight.slice(-180)}
               simulation={projection.points}
@@ -210,7 +219,7 @@ export function OverviewView({
           ) : (
             <EmptyState
               title="Not enough weigh-ins yet"
-              detail="The projection needs a handful of scale readings to establish a trend. Import a Garmin export with weight data, or weigh in a few more times."
+              detail="The projection needs at least one weigh-in to anchor to. Import a Garmin export containing weight, or set your current weight in the Profile panel."
             />
           )}
         </Panel>
@@ -293,7 +302,11 @@ export function OverviewView({
         </Panel>
       </div>
 
-      <Panel label="Daily steps" sub="Bars reach full colour above 8,000 — the point where the effect on expenditure becomes material.">
+      <Panel label="Daily steps" sub={
+          deck.fullDays.length < deck.days.length
+            ? "Bars reach full colour above 8,000. The first and last days of an export are partial — the watch was set up on one and the export ran on the other — so they are shown but left out of the average."
+            : "Bars reach full colour above 8,000 — the point where the effect on expenditure becomes material."
+        }>
         {stepRows.length > 3 ? (
           <StepsChart data={stepRows.slice(-120)} />
         ) : (
@@ -305,22 +318,21 @@ export function OverviewView({
 }
 
 /**
- * VO₂max expressed as the age at which this value is average, from the
- * population regressions in Jackson et al. — men decline about 0.37 ml/kg/min
- * a year from ~57.8, women about 0.34 from ~46.0.
+ * VO₂max against the population average for this age and sex, from the
+ * regressions in Jackson et al. — men decline about 0.37 ml/kg/min a year from
+ * ~57.8, women about 0.34 from ~46.0.
  *
- * Clamped to 18–80 because the regression is linear and runs off into
- * nonsense at both ends: a well-trained 34-year-old would otherwise be told
- * they have the VO₂max of a nine-year-old.
+ * Stated as a margin rather than as a "fitness age". Inverting the regression
+ * to an age is the usual framing but it breaks exactly where it is most often
+ * quoted: a fit 22-year-old inverts to an age below the range the equation was
+ * ever fitted on, so the label saturates and stops meaning anything. The gap
+ * from the age-matched average stays honest at every age.
  */
-function fitnessAge(vo2: number, age: number, sex: "male" | "female"): string {
+function vo2Standing(vo2: number, age: number, sex: "male" | "female"): string {
   const [intercept, slope] = sex === "male" ? [57.8, 0.372] : [46.0, 0.343];
-  const estimated = Math.round((intercept - vo2) / slope);
+  const expected = intercept - slope * age;
+  const delta = vo2 - expected;
 
-  if (estimated < 18) return "top of the population range";
-  if (estimated > 80) return "below the typical adult range";
-
-  const clamped = Math.min(80, Math.max(18, estimated));
-  if (Math.abs(clamped - age) < 2) return "typical for your age";
-  return `equivalent to age ${clamped}`;
+  if (Math.abs(delta) < 1.5) return `average for ${age}`;
+  return `${delta > 0 ? "+" : "−"}${Math.abs(delta).toFixed(1)} vs average for ${age}`;
 }

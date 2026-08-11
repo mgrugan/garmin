@@ -250,6 +250,39 @@ export function NumberSlider({
 
 /* ── states ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Says out loud when the dataset is too thin for what a view normally shows.
+ *
+ * A dashboard that renders a 42-day fitness baseline from six days of data is
+ * not empty, it is wrong — and wrong is harder to notice than missing. This
+ * banner names the shortfall so the numbers below it can be read at the right
+ * confidence.
+ */
+export function CoverageNotice({
+  spanDays,
+  needDays,
+  what,
+}: {
+  spanDays: number;
+  needDays: number;
+  what: string;
+}) {
+  if (spanDays >= needDays) return null;
+  return (
+    <div className="flex items-start gap-2.5 rounded-md border border-warning/25 bg-warning/5 px-3.5 py-3">
+      <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warning" />
+      <p className="text-[12px] leading-relaxed text-ink-muted">
+        Your export covers{" "}
+        <span className="font-mono text-ink">
+          {spanDays} day{spanDays === 1 ? "" : "s"}
+        </span>
+        . {what} normally takes about {needDays}, so treat what follows as a first
+        reading rather than a trend — it firms up as the watch records more.
+      </p>
+    </div>
+  );
+}
+
 export function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
     <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 px-6 text-center">

@@ -18,7 +18,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { buildDataset, type ImportFile } from "@/lib/garmin/parse";
-import type { GarminDataset, UserProfile } from "@/lib/garmin/types";
+import type { GarminDataset } from "@/lib/garmin/types";
 import { mediumDate, type UnitSystem } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -26,12 +26,10 @@ export function ImportPanel({
   onLoaded,
   onClose,
   units,
-  profile,
 }: {
   onLoaded: (d: GarminDataset) => void;
   onClose: () => void;
   units: UnitSystem;
-  profile: UserProfile;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +66,12 @@ export function ImportPanel({
           }
         }
 
-        const dataset = await buildDataset(files, { units, profile });
+        // Deliberately no `profile` override. The caller only has the profile
+        // currently in memory, which on a first import is the sample data's
+        // defaults — passing it through let age 34 / height 180 cm silently
+        // overwrite the real 22 / 175 harvested from the export. Values read
+        // from the user's own files win; the Profile panel handles corrections.
+        const dataset = await buildDataset(files, { units });
 
         const total =
           dataset.days.length +
@@ -89,7 +92,7 @@ export function ImportPanel({
         setBusy(false);
       }
     },
-    [units, profile],
+    [units],
   );
 
   return (

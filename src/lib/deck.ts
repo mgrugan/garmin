@@ -9,9 +9,12 @@
 
 import { useMemo } from "react";
 import {
+  completeDays,
   cutoffFor,
+  datasetSpanDays,
   estimateMaxHr,
   mean,
+  median,
   periodDelta,
   seriesFrom,
   sleepBreakdown,
@@ -103,6 +106,10 @@ export interface Deck {
     exerciseKcalPerDay: number;
     maintenanceKcal: number;
     strengthSessionsPerWeek: number;
+    /** What this app's equations produce for resting rate. */
+    bmrKcal: number;
+    /** What Garmin's own device reported, when the export includes it. */
+    garminBmrKcal?: number;
   };
 
   totals: {
@@ -112,6 +119,15 @@ export interface Deck {
     calories: number;
     byType: { type: ActivityType; minutes: number; sessions: number; distanceKm: number }[];
   };
+
+  /** Days between the first and last record, across the whole dataset. */
+  spanDays: number;
+
+  /**
+   * Range-filtered days with partial edge days removed. Use this for any
+   * average; use `days` for charts, which should show what was recorded.
+   */
+  fullDays: DayRecord[];
 }
 
 export function useDeck(dataset: GarminDataset, range: RangeKey): Deck {
@@ -136,9 +152,10 @@ export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
     ? mean(restingHrAll.slice(-60).map((p) => p.value))
     : 55;
 
+  const fullDays = completeDays(days);
   const load = trainingLoad(activities, days, maxHr, restingHrBaseline);
   const weeks = weeklySummaries(activities);
-  const zones = zoneMinutes(activities, maxHr);
+  const zones = zoneMinutes(activities, maxHr, dataset.profile.zoneFloors);
   const sleepStats = sleepBreakdown(sleep);
 
   // Full-history series — trend fits need depth the visible range may not have.
@@ -186,7 +203,7 @@ export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
 
   // Anchor on the last 8 weeks — recent enough to describe current habits,
   // long enough that one big week doesn't distort maintenance.
-  const recentDays = dataset.days.slice(-56);
+  const recentDays = completeDays(dataset.days).slice(-56);
   const recentActivities = dataset.activities.filter(
     (a) => recentDays.length > 0 && a.date >= recentDays[0].date,
   );
@@ -221,6 +238,14 @@ export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
       ? recentActivities.filter((a) => a.type === "strength").length / (recentDays.length / 7)
       : 0;
 
+  // Garmin reports its own resting figure per day. It routinely runs well
+  // above the predictive equations, so it is carried through and surfaced
+  // rather than quietly contradicted.
+  const garminBmrValues = recentDays
+    .map((d) => d.caloriesBmr)
+    .filter((v): v is number => v !== undefined && v > 800);
+  const garminBmr = garminBmrValues.length ? median(garminBmrValues) : undefined;
+
   // Maintenance at current habits: everything except the thermic effect, which
   // depends on intake and so is added by the simulator itself.
   const maintenanceKcal =
@@ -248,6 +273,7 @@ export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
   };
 
   const insights = buildInsights({ dataset, days, sleep, activities, load, maxHr });
+  const spanDays = datasetSpanDays(dataset);
 
   return {
     days,
@@ -271,7 +297,11 @@ export function buildDeck(dataset: GarminDataset, range: RangeKey): Deck {
       exerciseKcalPerDay,
       maintenanceKcal,
       strengthSessionsPerWeek,
+      bmrKcal: bmr,
+      garminBmrKcal: garminBmr,
     },
     totals,
+    spanDays,
+    fullDays,
   };
 }

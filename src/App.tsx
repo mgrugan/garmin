@@ -26,9 +26,9 @@ import { TrajectoryView } from "@/views/TrajectoryView";
 import { InsightsView } from "@/views/InsightsView";
 import { buildDemoDataset } from "@/lib/garmin/demo";
 import { useDeck } from "@/lib/deck";
-import { type RangeKey } from "@/lib/garmin/derive";
+import { defaultRangeFor, type RangeKey } from "@/lib/garmin/derive";
 import type { GarminDataset, UserProfile } from "@/lib/garmin/types";
-import { mediumDate, type UnitSystem } from "@/lib/format";
+import { kgUnit, mediumDate, toDisplayMass, type UnitSystem } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Tab = "overview" | "training" | "recovery" | "trajectory" | "insights";
@@ -60,7 +60,9 @@ function tabFromHash(): Tab {
 export default function App() {
   const [dataset, setDataset] = useState<GarminDataset>(() => buildDemoDataset());
   const [tab, setTabState] = useState<Tab>(tabFromHash);
-  const [range, setRange] = useState<RangeKey>("90d");
+  // Opens on the widest range that still contains data — a one-week export on a
+  // 90-day window reads as 83 days of missing data rather than a short history.
+  const [range, setRange] = useState<RangeKey>(() => defaultRangeFor(dataset));
   const [units, setUnits] = useState<UnitSystem>("metric");
   const [importing, setImporting] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -136,12 +138,11 @@ export default function App() {
       {importing && (
         <ImportPanel
           units={units}
-          profile={dataset.profile}
           onClose={() => setImporting(false)}
           onLoaded={(d) => {
             setDataset(d);
             setImporting(false);
-            setRange("90d");
+            setRange(defaultRangeFor(d));
           }}
         />
       )}
@@ -343,7 +344,25 @@ function ProfilePanel({
         </button>
       }
     >
-      <div className="grid gap-6 sm:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Weight lives here, not only in the export, because a Garmin account
+            with no connected scale carries a single hand-entered figure that
+            may be months stale — and it is the largest single input to every
+            calorie number in the app. */}
+        <Field
+          label="Current weight"
+          value={`${toDisplayMass(profile.startWeightKg, units).toFixed(1)} ${kgUnit(units)}`}
+        >
+          <NumberSlider
+            value={profile.startWeightKg}
+            onChange={(v) => onChange({ startWeightKg: v })}
+            min={40}
+            max={200}
+            step={0.1}
+            ariaLabel={`Current weight in ${units === "imperial" ? "pounds" : "kilograms"}`}
+          />
+        </Field>
+
         <Field label="Height" value={heightDisplay}>
           <NumberSlider
             value={profile.heightCm}

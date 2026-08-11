@@ -200,7 +200,7 @@ export function WeeklyVolumeChart({
         <BarChart data={rows} margin={{ top: 6, right: 22, bottom: 2, left: 0 }}>
           <Grid />
           <XAxis dataKey="label" {...axisCommon} minTickGap={20} dy={6} />
-          <ValueAxis width={30} formatter={(v) => v.toFixed(0)} />
+          <ValueAxis width={34} domain={[0, "auto"]} formatter={hourTick} />
 
           <Bar dataKey="hours" radius={[3, 3, 0, 0]} isAnimationActive={false}>
             {rows.map((r, i) => (
@@ -465,7 +465,7 @@ export function StepsChart({
         <BarChart data={data} margin={{ top: 6, right: 22, bottom: 2, left: 0 }}>
           <Grid />
           <TimeAxis formatter={shortLabel} />
-          <ValueAxis width={34} formatter={(v) => compactNumber(v)} />
+          <ValueAxis width={34} domain={[0, "auto"]} formatter={(v) => compactNumber(v)} />
           <Bar dataKey="steps" radius={[2, 2, 0, 0]} isAnimationActive={false}>
             {data.map((d, i) => (
               <Cell key={i} fill={d.steps >= goal ? RECOVERY : "#2c3846"} />
@@ -537,6 +537,14 @@ export function SleepDurationChart({
       </ResponsiveContainer>
     </ChartBox>
   );
+}
+
+/**
+ * Hours axis. A short export can span a range of tenths, where `toFixed(0)`
+ * collapses every tick to the same integer and the axis reads "2 2 2 2 2".
+ */
+function hourTick(v: number): string {
+  return v >= 10 || Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1);
 }
 
 function shortLabel(iso: string): string {

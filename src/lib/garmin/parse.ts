@@ -160,11 +160,13 @@ export function parseActivitiesCsv(text: string, opts: ParseOptions = {}): Activ
 
     const rawType = String(pick(r, "activity type", "activitytype", "aktivitätstyp") ?? "");
 
+    const csvTitle = (pick<string>(r, "title") ?? "").trim() || undefined;
+
     out.push({
       date,
-      type: normaliseActivityType(rawType),
+      type: normaliseActivityType(rawType, csvTitle),
       rawType: rawType || undefined,
-      title: (pick<string>(r, "title") ?? "").trim() || undefined,
+      title: csvTitle,
       durationMin,
       distanceKm: distanceKm && distanceKm > 0 ? distanceKm : undefined,
       calories: num(pick(r, "calories")),
@@ -199,14 +201,34 @@ export type Bag = {
 /**
  * Routes one JSON array by the key signature of its records. Returns the number
  * of records absorbed so the caller can mark a file as skipped when it is 0.
+ *
+ * Keys are unioned across a sample of records rather than read off the first
+ * one. Real exports open and close their arrays with stub objects — the sleep
+ * file's first and last entries are literally `{"retro": false}` — so keying off
+ * `rows[0]` silently discarded every night of sleep in the file.
  */
 function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
-  const sample = rows.find((r) => r && typeof r === "object");
-  if (!sample) return 0;
-  const keys = new Set(Object.keys(sample).map((k) => k.toLowerCase()));
+  const keys = new Set<string>();
+  for (const r of rows.slice(0, 25)) {
+    if (r && typeof r === "object") for (const k of Object.keys(r)) keys.add(k.toLowerCase());
+  }
+  if (!keys.size) return 0;
   const has = (...names: string[]) => names.some((n) => keys.has(n.toLowerCase()));
 
   let n = 0;
+
+  // Activities, from the JSON bundle rather than Activities.csv. Every unit
+  // here is non-obvious, so see `readSummarizedActivity`.
+  if (has("activityType") && has("beginTimestamp", "startTimeLocal", "startTimeGmt")) {
+    for (const r of rows) {
+      const a = readSummarizedActivity(r);
+      if (a) {
+        bag.activities.push(a);
+        n++;
+      }
+    }
+    return n;
+  }
 
   // Sleep: the only shape carrying per-stage second counts.
   if (has("deepSleepSeconds", "sleepTimeSeconds", "sleepStartTimestampGMT", "sleepEndTimestampGMT")) {
@@ -214,6 +236,8 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
       const date = toISODate(
         pick(r, "calendarDate", "sleepStartTimestampLocal", "sleepStartTimestampGMT", "date"),
       );
+      // Newer exports drop `sleepTimeSeconds` entirely and expect the reader to
+      // sum the stages.
       const total =
         secondsToMinutes(pick(r, "sleepTimeSeconds", "totalSleepSeconds")) ??
         sum([
@@ -223,6 +247,8 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
         ]);
       if (!date || !total) continue;
 
+      // Score nesting changed shape between vintages: `sleepScores.overall.value`
+      // in older files, `sleepScores.overallScore` in current ones.
       const scores = pick<Record<string, unknown>>(r, "sleepScores");
       const overall = scores ? pick<Record<string, unknown>>(scores, "overall") : undefined;
 
@@ -235,6 +261,7 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
         awakeMinutes: secondsToMinutes(pick(r, "awakeSleepSeconds", "awakeTimeSeconds")),
         score:
           num(pick(r, "sleepScore", "overallSleepScore")) ??
+          (scores ? num(pick(scores, "overallScore")) : undefined) ??
           (overall ? num(pick(overall, "value")) : undefined),
         avgOvernightHrv: num(pick(r, "avgOvernightHrv", "averageHrv")),
         restingHeartRate: num(pick(r, "restingHeartRate")),
@@ -244,11 +271,41 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
     return n;
   }
 
-  // Weight: grams in most vintages, kilograms in a few.
+  // Daily health snapshot. HRV and resting HR are buried in a `metrics` array
+  // keyed by `type` rather than sitting on the record.
+  if (has("metrics") && has("calendarDate")) {
+    for (const r of rows) {
+      const date = toISODate(pick(r, "calendarDate"));
+      const metrics = pick<Record<string, unknown>[]>(r, "metrics");
+      if (!date || !Array.isArray(metrics)) continue;
+
+      const byType = (t: string) =>
+        metrics.find((m) => String(pick(m, "type") ?? "").toUpperCase() === t);
+
+      const hrv = byType("HRV");
+      const value = hrv ? num(pick(hrv, "value")) : undefined;
+      if (value === undefined) continue;
+
+      bag.hrv.push({ date, avgMs: value, status: pick<string>(hrv!, "status") });
+      n++;
+    }
+    return n;
+  }
+
+  // Weight. Current exports nest the reading under a `weight` object and put
+  // the date in `metaData.calendarDate`; older ones are flat.
   if (has("weight") && !has("totalSteps")) {
     for (const r of rows) {
-      const date = toISODate(pick(r, "calendarDate", "date", "timestampGMT", "samplePk"));
-      const raw = num(pick(r, "weight", "weightInGrams"));
+      const nested = pick<Record<string, unknown>>(r, "weight");
+      const holder = nested && typeof nested === "object" ? nested : r;
+      const meta = pick<Record<string, unknown>>(r, "metaData");
+
+      const date = toISODate(
+        pick(holder, "calendarDate", "date", "timestampGMT") ??
+          (meta ? pick(meta, "calendarDate") : undefined) ??
+          pick(r, "calendarDate", "date"),
+      );
+      const raw = num(pick(holder, "weight", "weightInGrams"));
       if (!date || raw === undefined) continue;
 
       // 40–250 kg is plausible; anything larger is grams.
@@ -259,10 +316,10 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
       bag.weight.push({
         date,
         weightKg: kg,
-        bodyFatPct: num(pick(r, "bodyFat", "bodyFatPercentage")),
-        muscleMassKg: normaliseMass(num(pick(r, "muscleMass"))),
-        bodyWaterPct: num(pick(r, "bodyWater")),
-        boneMassKg: normaliseMass(num(pick(r, "boneMass"))),
+        bodyFatPct: num(pick(holder, "bodyFat", "bodyFatPercentage")),
+        muscleMassKg: normaliseMass(num(pick(holder, "muscleMass"))),
+        bodyWaterPct: num(pick(holder, "bodyWater")),
+        boneMassKg: normaliseMass(num(pick(holder, "boneMass"))),
       });
       n++;
     }
@@ -272,7 +329,10 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
   // VO2max / fitness metrics.
   if (has("vo2MaxValue", "vo2MaxPreciseValue", "vo2MaxRunning", "vo2MaxCycling")) {
     for (const r of rows) {
-      const date = toISODate(pick(r, "calendarDate", "date"));
+      const meta = pick<Record<string, unknown>>(r, "metaData");
+      const date = toISODate(
+        pick(r, "calendarDate", "date") ?? (meta ? pick(meta, "calendarDate") : undefined),
+      );
       if (!date) continue;
       const run = num(pick(r, "vo2MaxRunning", "vo2MaxPreciseValue", "vo2MaxValue"));
       const ride = num(pick(r, "vo2MaxCycling"));
@@ -283,7 +343,7 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
     return n;
   }
 
-  // HRV.
+  // HRV, flat shape.
   if (has("lastNightAvg", "weeklyAvg", "hrvValue")) {
     for (const r of rows) {
       const date = toISODate(pick(r, "calendarDate", "date"));
@@ -300,18 +360,44 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
     for (const r of rows) {
       const date = toISODate(pick(r, "calendarDate", "date", "statisticsStartDate"));
       if (!date) continue;
+
+      // Stress and body battery are aggregates hanging off the record, not
+      // fields on it.
+      const stressBlock = pick<Record<string, unknown>>(r, "allDayStress");
+      const aggregators = stressBlock
+        ? pick<Record<string, unknown>[]>(stressBlock, "aggregatorList")
+        : undefined;
+      const totalStress = Array.isArray(aggregators)
+        ? aggregators.find((a) => String(pick(a, "type") ?? "") === "TOTAL")
+        : undefined;
+
+      const bb = pick<Record<string, unknown>>(r, "bodyBattery");
+      const bbStats = bb ? pick<Record<string, unknown>[]>(bb, "bodyBatteryStatList") : undefined;
+      const bbBy = (t: string) =>
+        Array.isArray(bbStats)
+          ? num(
+              pick(
+                bbStats.find((s) => String(pick(s, "bodyBatteryStatType") ?? "") === t) ?? {},
+                "statsValue",
+              ),
+            )
+          : undefined;
+
       bag.days.push({
         date,
         steps: num(pick(r, "totalSteps", "steps")),
         caloriesTotal: num(pick(r, "totalKilocalories", "totalCalories", "calories")),
         caloriesActive: num(pick(r, "activeKilocalories", "activeCalories")),
+        caloriesBmr: num(pick(r, "bmrKilocalories", "bmrCalories")),
         restingHeartRate: num(pick(r, "restingHeartRate", "restingHr")),
         intensityMinutesModerate: num(pick(r, "moderateIntensityMinutes", "moderateIntensityDuration")),
         intensityMinutesVigorous: num(pick(r, "vigorousIntensityMinutes", "vigorousIntensityDuration")),
-        floorsClimbed: num(pick(r, "floorsAscended", "floorsClimbed")),
-        stressAvg: num(pick(r, "averageStressLevel", "avgStressLevel")),
-        bodyBatteryHigh: num(pick(r, "bodyBatteryHighestValue", "bodyBatteryHigh")),
-        bodyBatteryLow: num(pick(r, "bodyBatteryLowestValue", "bodyBatteryLow")),
+        floorsClimbed: num(pick(r, "floorsAscended", "floorsClimbed", "floorsAscendedInMeters")),
+        stressAvg:
+          num(pick(r, "averageStressLevel", "avgStressLevel")) ??
+          (totalStress ? num(pick(totalStress, "averageStressLevel")) : undefined),
+        bodyBatteryHigh: num(pick(r, "bodyBatteryHighestValue", "bodyBatteryHigh")) ?? bbBy("HIGHEST"),
+        bodyBatteryLow: num(pick(r, "bodyBatteryLowestValue", "bodyBatteryLow")) ?? bbBy("LOWEST"),
       });
       n++;
     }
@@ -319,6 +405,78 @@ function routeJsonArray(rows: Record<string, unknown>[], bag: Bag): number {
   }
 
   return 0;
+}
+
+/**
+ * One record of `*_summarizedActivities.json`.
+ *
+ * The units in this file are not the ones the field names suggest, and getting
+ * them wrong is silent — the numbers stay plausible while being an order of
+ * magnitude off. Verified against a real export by cross-checking
+ * `bmrCalories` against `duration × dailyBMR/1440`:
+ *
+ *   duration, movingDuration, elapsedDuration → milliseconds
+ *   distance, elevationGain/Loss             → centimetres
+ *   calories, bmrCalories                    → KILOJOULES, not kcal
+ *   startTimeLocal                           → epoch ms pre-shifted to local,
+ *                                              so read it as if it were UTC
+ */
+function readSummarizedActivity(r: Record<string, unknown>): ActivityRecord | undefined {
+  const localMs = num(pick(r, "startTimeLocal"));
+  const date =
+    localMs !== undefined
+      ? new Date(localMs).toISOString().slice(0, 10)
+      : toISODate(pick(r, "beginTimestamp", "startTimeGmt"));
+  if (!date) return undefined;
+
+  // `duration` is the activity timer and is the right notion of session length.
+  // `movingDuration` is 0 for anything stationary — indoor cardio, strength —
+  // and badly undercounts non-GPS work (one 20.5 min session reports 8.6), so
+  // it is only a fallback. Zeros are treated as absent, not as a real duration.
+  const durationMs = firstPositive(
+    num(pick(r, "duration")),
+    num(pick(r, "movingDuration")),
+    num(pick(r, "elapsedDuration")),
+  );
+  if (durationMs === undefined) return undefined;
+  const durationMin = durationMs / 60000;
+
+  const distanceCm = num(pick(r, "distance"));
+  const distanceKm = distanceCm && distanceCm > 0 ? distanceCm / 100_000 : undefined;
+
+  const elevCm = num(pick(r, "elevationGain"));
+  const rawType = String(pick(r, "activityType") ?? "");
+  const title = (pick<string>(r, "name") ?? "").trim() || undefined;
+
+  return {
+    date,
+    type: normaliseActivityType(rawType, title),
+    rawType: rawType || undefined,
+    title,
+    durationMin,
+    distanceKm,
+    calories: kjToKcal(num(pick(r, "calories"))),
+    avgHr: num(pick(r, "avgHr")),
+    maxHr: num(pick(r, "maxHr")),
+    elevationGainM: elevCm !== undefined ? elevCm / 100 : undefined,
+    aerobicTE: num(pick(r, "aerobicTrainingEffect")),
+    anaerobicTE: num(pick(r, "anaerobicTrainingEffect")),
+    avgCadence: num(pick(r, "avgDoubleCadence", "avgRunCadence", "avgBikeCadence")),
+    paceMinPerKm:
+      distanceKm && distanceKm > 0.05 ? clamp(durationMin / distanceKm, 1, 60) : undefined,
+  };
+}
+
+const KJ_PER_KCAL = 4.184;
+
+function kjToKcal(kj: number | undefined): number | undefined {
+  return kj === undefined ? undefined : kj / KJ_PER_KCAL;
+}
+
+/** First value that is present and greater than zero. */
+function firstPositive(...values: (number | undefined)[]): number | undefined {
+  for (const v of values) if (v !== undefined && v > 0) return v;
+  return undefined;
 }
 
 /** Garmin reports muscle/bone mass in grams in most exports. */
@@ -355,6 +513,7 @@ export async function buildDataset(
   const bag: Bag = { days: [], sleep: [], weight: [], activities: [], vo2max: [], hrv: [] };
   const sources: string[] = [];
   const skipped: string[] = [];
+  const harvested: Partial<UserProfile> = {};
 
   // Expand archives first so nested members are treated as ordinary files.
   const flat: ImportFile[] = [];
@@ -400,11 +559,20 @@ export async function buildDataset(
 
       if (/\.json$/i.test(f.name)) {
         const parsed: unknown = JSON.parse(text);
-        // Exports wrap arrays inconsistently; find the first array of objects.
+
+        // Profile files carry no time series, so they must be read separately
+        // or they would be reported as skipped despite being understood.
+        const before = { ...harvested };
+        harvestProfile(parsed, harvested);
+        const learnedSomething = Object.keys(harvested).some(
+          (k) => (harvested as Record<string, unknown>)[k] !== (before as Record<string, unknown>)[k],
+        );
+
         const arrays = collectRecordArrays(parsed);
         let absorbed = 0;
         for (const arr of arrays) absorbed += routeJsonArray(arr, bag);
-        if (absorbed > 0) sources.push(f.name);
+
+        if (absorbed > 0 || learnedSomething) sources.push(f.name);
         else skipped.push(f.name);
         continue;
       }
@@ -416,24 +584,95 @@ export async function buildDataset(
   }
 
   dedupeAll(bag);
-  return finalise(bag, sources, skipped, opts.profile, false);
+  // Caller-supplied values win over harvested ones: if the user has corrected
+  // their height in the Profile panel, a re-import must not silently undo it.
+  return finalise(bag, sources, skipped, { ...harvested, ...opts.profile }, false);
 }
 
-/** Walks a parsed JSON value and yields every array-of-objects it contains. */
+/**
+ * Walks a parsed JSON value and yields every array-of-objects it contains.
+ *
+ * Recurses *into* array elements as well as object values, because the
+ * activities file wraps its payload as `[{ summarizedActivitiesExport: [...] }]`
+ * — a one-element array whose only member holds the real array. Stopping at the
+ * outer array would find nothing routable and skip the whole file.
+ *
+ * The outer array is still yielded; it simply matches no branch and is ignored.
+ */
 function collectRecordArrays(value: unknown, depth = 0): Record<string, unknown>[][] {
-  if (depth > 4 || value === null || typeof value !== "object") return [];
-
-  if (Array.isArray(value)) {
-    return value.some((v) => v && typeof v === "object" && !Array.isArray(v))
-      ? [value as Record<string, unknown>[]]
-      : [];
-  }
+  if (depth > 5 || value === null || typeof value !== "object") return [];
 
   const out: Record<string, unknown>[][] = [];
+
+  if (Array.isArray(value)) {
+    const objects = value.filter((v) => v && typeof v === "object" && !Array.isArray(v));
+    if (objects.length) out.push(value as Record<string, unknown>[]);
+
+    // Only worth descending when the array is a thin wrapper; a 500-element
+    // array of daily records has nothing useful nested inside it.
+    if (objects.length <= 4) {
+      for (const v of objects) out.push(...collectRecordArrays(v, depth + 1));
+    }
+    return out;
+  }
+
   for (const v of Object.values(value as Record<string, unknown>)) {
     out.push(...collectRecordArrays(v, depth + 1));
   }
   return out;
+}
+
+/**
+ * Profile facts, which Garmin scatters across three single-object files rather
+ * than putting in any of the time series.
+ *
+ * Worth harvesting because every calorie number in the app depends on height,
+ * age and sex, and the alternative is making the user re-enter what the export
+ * already knows.
+ */
+function harvestProfile(value: unknown, into: Partial<UserProfile>, depth = 0): void {
+  if (depth > 4 || value === null || typeof value !== "object") return;
+
+  if (Array.isArray(value)) {
+    for (const v of value) harvestProfile(v, into, depth + 1);
+    return;
+  }
+
+  const r = value as Record<string, unknown>;
+
+  const gender = String(pick(r, "gender") ?? "").toUpperCase();
+  if (gender === "MALE" || gender === "FEMALE") into.sex = gender.toLowerCase() as "male" | "female";
+
+  const birth = pick<string>(r, "birthDate");
+  if (birth) {
+    const age = yearsSince(birth);
+    if (age !== undefined && age >= 10 && age <= 100) into.age = age;
+  }
+
+  const height = num(pick(r, "height"));
+  if (height !== undefined && height > 100 && height < 250) into.heightCm = height;
+
+  // `heartRateZones.json` — the watch's own zones beat any %-of-max estimate,
+  // because these are what the device used when it recorded the sessions.
+  const maxHr = num(pick(r, "maxHeartRateUsed", "maxHeartRate"));
+  if (maxHr !== undefined && maxHr > 120 && maxHr < 230) into.maxHr = maxHr;
+
+  const floors = [1, 2, 3, 4, 5]
+    .map((i) => num(pick(r, `zone${i}Floor`)))
+    .filter((v): v is number => v !== undefined);
+  if (floors.length === 5) into.zoneFloors = floors;
+
+  for (const v of Object.values(r)) harvestProfile(v, into, depth + 1);
+}
+
+function yearsSince(iso: string): number | undefined {
+  const born = new Date(iso);
+  if (Number.isNaN(born.getTime())) return undefined;
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  const m = now.getMonth() - born.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
+  return age;
 }
 
 /** Garmin's date ranges overlap between files; last write wins per day. */
@@ -484,6 +723,8 @@ export function finalise(
     startWeightKg: profileOverride?.startWeightKg ?? latestWeight?.weightKg ?? 82,
     bodyFatPct: profileOverride?.bodyFatPct ?? latestWeight?.bodyFatPct,
     maxHr: profileOverride?.maxHr,
+    zoneFloors: profileOverride?.zoneFloors,
+    weightFromExport: latestWeight !== undefined,
   };
 
   return {

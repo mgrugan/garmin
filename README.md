@@ -31,9 +31,57 @@ between export vintages. Anything it cannot place is listed under "not
 recognised" rather than dropped silently — a health import that quietly loses
 six months is worse than one that fails loudly.
 
-One thing it cannot detect: **Garmin's CSV follows your account's display
-units and the file never states which**. Set the KG/LB toggle before importing
-if your account is in imperial.
+Profile facts are read from the export too — height, age from birth date, sex,
+max heart rate and **your watch's own heart-rate zone floors**, which beat any
+percentage-of-max estimate because they are the thresholds the device applied
+while recording. Everything remains editable in the Profile panel.
+
+### What the real export actually looks like
+
+Notes from parsing a live Garmin export, since the format is largely
+undocumented and several of these are silent traps:
+
+- **There may be no `Activities.csv` at all.** Recent exports put sessions in
+  `DI-Connect-Fitness/*_summarizedActivities.json`, wrapped as a one-element
+  array whose only member holds the real array.
+- **The units in that file are not what the field names suggest**: `duration`
+  is milliseconds, `distance` is centimetres, and `calories` is **kilojoules**,
+  not kcal. Getting the last one wrong is silent — the numbers stay plausible
+  while being 4.2× off. Cross-check `bmrCalories` against
+  `duration × dailyBMR/1440` to confirm.
+- **`movingDuration` is 0 for anything stationary** (strength, indoor cardio)
+  and undercounts non-GPS work badly. Use `duration`, the activity timer.
+- **Sleep arrays open and close with `{"retro": false}` stubs**, so sniffing the
+  shape from `rows[0]` finds nothing and discards every night in the file.
+- **Sleep has no `sleepTimeSeconds`** in current exports; sum the stages. The
+  score moved from `sleepScores.overall.value` to `sleepScores.overallScore`.
+- **HRV is nested** inside `healthStatusData` → `metrics[]` filtered by
+  `type: "HRV"`, not a field on the day.
+- **Weight is nested** under a `weight` object with the date in
+  `metaData.calendarDate`, and is in grams.
+- **Stress and Body Battery are aggregates**, not fields:
+  `allDayStress.aggregatorList[type="TOTAL"]` and
+  `bodyBattery.bodyBatteryStatList[bodyBatteryStatType="HIGHEST"|"LOWEST"]`.
+- **Garmin files anything without a dedicated profile as `"other"`** — martial
+  arts, class-based training. The session *name* is often the only signal, so
+  it is used as a fallback for typing.
+
+One thing the importer cannot detect: **Garmin's CSV follows your account's
+display units and the file never states which**. Set the KG/LB toggle before
+importing if your account is in imperial. (The JSON bundle is unambiguous.)
+
+### Short histories
+
+A new watch may carry a single week. The dashboard opens on the widest range
+that contains data, and any panel whose statistic needs more history says so
+instead of drawing it — a 42-day fitness baseline computed from six days is not
+empty, it is wrong, and wrong is harder to notice than missing. The Insights
+view lists what each rule is still waiting for rather than implying all-clear.
+
+The first and last day of an export are partial — the watch was set up on one,
+the export ran on the other — so they are shown in charts but excluded from
+averages. Leaving them in moved one step average from 8.6k to 6.2k, which then
+propagated into the maintenance estimate and the whole weight projection.
 
 ## The five views
 

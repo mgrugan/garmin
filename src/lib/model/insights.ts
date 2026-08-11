@@ -16,6 +16,7 @@
  */
 
 import {
+  completeDays,
   loadVerdict,
   mean,
   periodDelta,
@@ -287,7 +288,7 @@ function consistencyInsights(days: DayRecord[], activities: ActivityRecord[]): I
   const out: Insight[] = [];
   if (days.length < 28) return out;
 
-  const recent = days.slice(-28);
+  const recent = completeDays(days).slice(-28);
   const avgSteps = mean(recent.map((d) => d.steps ?? 0).filter((s) => s > 0));
 
   if (avgSteps > 0 && avgSteps < 7500) {

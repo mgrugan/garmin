@@ -34,6 +34,30 @@ export const RANGE_LABELS: Record<RangeKey, string> = {
   all: "All time",
 };
 
+/**
+ * How many days the export actually spans. Not every Garmin account has years
+ * of history — a new watch may carry a single week — and several panels are
+ * meaningless below a threshold, so they ask this rather than assuming.
+ */
+export function datasetSpanDays(dataset: GarminDataset): number {
+  const { firstDate, lastDate } = dataset.meta;
+  if (!firstDate || !lastDate) return 0;
+  const ms = Date.parse(`${lastDate}T00:00:00`) - Date.parse(`${firstDate}T00:00:00`);
+  return Math.max(0, Math.round(ms / 86_400_000)) + 1;
+}
+
+/**
+ * The widest range that still contains data, so a one-week export opens on
+ * "All time" instead of a 90-day window that looks 83 days empty.
+ */
+export function defaultRangeFor(dataset: GarminDataset): RangeKey {
+  const span = datasetSpanDays(dataset);
+  if (span <= 45) return "all";
+  if (span <= 120) return "90d";
+  if (span <= 220) return "6m";
+  return "1y";
+}
+
 export function cutoffFor(dataset: GarminDataset, range: RangeKey): ISODate {
   const last = dataset.meta.lastDate;
   if (!last || range === "all") return "0000-01-01";
@@ -86,6 +110,35 @@ export function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/**
+ * Drops partial days from the leading and trailing edge of a daily series.
+ *
+ * The first day of an export is the day the watch was set up and the last is
+ * the day the export ran, so both record a few hours of wear. Left in, they
+ * behave like real rest days and drag every average down — on a one-week
+ * export they moved a 8.6k step average to 6.2k, which then propagated into
+ * the maintenance estimate and the whole weight projection.
+ *
+ * Only the edges are trimmed. An interior day with almost no steps is a
+ * genuine rest day (or a day the watch was off) and belongs in the average.
+ */
+export function completeDays(days: DayRecord[]): DayRecord[] {
+  if (days.length < 3) return days;
+
+  const stepCounts = days.map((d) => d.steps ?? 0).filter((s) => s > 0);
+  if (stepCounts.length < 3) return days;
+  const typical = median(stepCounts);
+  const floor = typical * 0.25;
+
+  let start = 0;
+  let end = days.length - 1;
+  // At most one day is trimmed from each end — anything more is real behaviour.
+  if ((days[start].steps ?? 0) < floor) start++;
+  if (end > start && (days[end].steps ?? 0) < floor) end--;
+
+  return days.slice(start, end + 1);
 }
 
 /* ── series extraction ──────────────────────────────────────────────────── */
@@ -206,13 +259,27 @@ export const ZONE_DESCRIPTIONS = [
   "Z5 · Maximum",
 ];
 
-export function zoneMinutes(activities: ActivityRecord[], maxHr: number): number[] {
+/**
+ * Time per heart-rate zone.
+ *
+ * `zoneFloors` comes from the watch's own `heartRateZones.json` when the export
+ * includes it. Those beat a percentage-of-max estimate outright: they are the
+ * thresholds the device actually applied while recording, so the zones shown
+ * here match the ones shown on the watch. Falls back to %-of-max otherwise.
+ */
+export function zoneMinutes(
+  activities: ActivityRecord[],
+  maxHr: number,
+  zoneFloors?: number[],
+): number[] {
+  const floors =
+    zoneFloors?.length === 5 ? zoneFloors : ZONE_BOUNDS.slice(1).map((f) => f * maxHr);
+
   const buckets = [0, 0, 0, 0, 0];
   for (const a of activities) {
     if (!a.avgHr) continue;
-    const frac = a.avgHr / maxHr;
     let z = 0;
-    for (let i = 1; i < ZONE_BOUNDS.length; i++) if (frac >= ZONE_BOUNDS[i]) z = i;
+    for (let i = 0; i < floors.length; i++) if (a.avgHr >= floors[i]) z = i;
     buckets[Math.min(4, z)] += a.durationMin;
   }
   return buckets;
