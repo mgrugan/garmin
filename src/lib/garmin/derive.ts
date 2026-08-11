@@ -194,7 +194,17 @@ export function loadVerdict(ratio: number): { label: string; tone: "good" | "war
 /* ── heart-rate zones ───────────────────────────────────────────────────── */
 
 export const ZONE_BOUNDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
-export const ZONE_NAMES = ["Z1 Warm up", "Z2 Easy", "Z3 Aerobic", "Z4 Threshold", "Z5 Maximum"];
+/** Axis labels stay to two characters — "Z4 Threshold" wrapped onto two lines
+ *  and collided with its neighbour at panel width. The full names live in
+ *  ZONE_DESCRIPTIONS and surface in the tooltip. */
+export const ZONE_NAMES = ["Z1", "Z2", "Z3", "Z4", "Z5"];
+export const ZONE_DESCRIPTIONS = [
+  "Z1 · Warm up",
+  "Z2 · Easy",
+  "Z3 · Aerobic",
+  "Z4 · Threshold",
+  "Z5 · Maximum",
+];
 
 export function zoneMinutes(activities: ActivityRecord[], maxHr: number): number[] {
   const buckets = [0, 0, 0, 0, 0];
