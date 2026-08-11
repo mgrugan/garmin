@@ -174,10 +174,11 @@ export function TrajectoryView({
             {HORIZONS.map((h) => (
               <button
                 key={h.weeks}
+                type="button"
                 onClick={() => setWeeks(h.weeks)}
                 aria-pressed={weeks === h.weeks}
                 className={cn(
-                  "eyebrow rounded-full px-2.5 py-1.5 transition-colors",
+                  "eyebrow touch-manipulation rounded-full px-2.5 py-1.5 transition-colors",
                   weeks === h.weeks
                     ? "bg-load text-on-load"
                     : "text-ink-faint hover:bg-overlay hover:text-ink-muted",
@@ -207,10 +208,11 @@ export function TrajectoryView({
           actions={
             dirty && (
               <button
+                type="button"
                 onClick={reset}
-                className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1.5 text-ink-faint transition-colors hover:border-line-strong hover:text-ink-muted"
+                className="flex touch-manipulation items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1.5 text-ink-faint transition-colors hover:border-line-strong hover:text-ink-muted"
               >
-                <ArrowCounterClockwise size={12} weight="bold" />
+                <ArrowCounterClockwise size={12} weight="bold" aria-hidden="true" />
                 <span className="eyebrow">Reset</span>
               </button>
             )
@@ -218,7 +220,7 @@ export function TrajectoryView({
         >
           <div className="flex flex-col gap-5">
             <Control
-              icon={<FireSimple size={15} weight="fill" />}
+              icon={<FireSimple size={15} weight="fill" aria-hidden="true" />}
               label="Daily calories"
               value={intake.toLocaleString()}
               unit="kcal"
@@ -242,7 +244,7 @@ export function TrajectoryView({
             </Control>
 
             <Control
-              icon={<PersonSimpleWalk size={15} weight="fill" />}
+              icon={<PersonSimpleWalk size={15} weight="fill" aria-hidden="true" />}
               label="Daily steps"
               value={steps.toLocaleString()}
               accent="recovery"
@@ -259,7 +261,7 @@ export function TrajectoryView({
             </Control>
 
             <Control
-              icon={<Barbell size={15} weight="fill" />}
+              icon={<Barbell size={15} weight="fill" aria-hidden="true" />}
               label="Training burn"
               value={exercise.toLocaleString()}
               unit="kcal/day"
@@ -277,7 +279,7 @@ export function TrajectoryView({
             </Control>
 
             <Control
-              icon={<Bathtub size={15} weight="fill" />}
+              icon={<Bathtub size={15} weight="fill" aria-hidden="true" />}
               label="Protein"
               value={protein.toFixed(1)}
               unit="g/kg"
@@ -295,7 +297,7 @@ export function TrajectoryView({
             </Control>
 
             <Control
-              icon={<Barbell size={15} weight="fill" />}
+              icon={<Barbell size={15} weight="fill" aria-hidden="true" />}
               label="Strength sessions"
               value={strength.toFixed(1)}
               unit="per week"
@@ -337,7 +339,7 @@ export function TrajectoryView({
           >
             <div className="flex flex-col gap-5">
               <Control
-                icon={<Flag size={15} weight="fill" />}
+                icon={<Flag size={15} weight="fill" aria-hidden="true" />}
                 label="Target weight"
                 value={toDisplayMass(goalKg, units).toFixed(1)}
                 unit={unit}
@@ -381,8 +383,9 @@ export function TrajectoryView({
                     </p>
                     {solved.intakeKcal !== intake && (
                       <button
+                        type="button"
                         onClick={() => setIntake(solved.intakeKcal)}
-                        className="mt-3.5 rounded-full bg-load px-3.5 py-2 text-[13px] font-semibold text-on-load transition-opacity hover:opacity-90"
+                        className="mt-3.5 touch-manipulation rounded-full bg-load px-3.5 py-2 text-[13px] font-semibold text-on-load transition-opacity hover:opacity-90"
                       >
                         Apply {solved.intakeKcal.toLocaleString()} kcal
                       </button>
@@ -447,7 +450,7 @@ export function TrajectoryView({
           </div>
 
           <p className="mt-4 flex gap-2 text-[12px] leading-relaxed text-ink-faint">
-            <Info size={14} className="mt-px shrink-0" />
+            <Info size={14} className="mt-px shrink-0" aria-hidden="true" />
             <span>
               Maintenance falls by {Math.round(sim.initialTdee - sim.finalTdee)} kcal across this
               projection — partly because a lighter body costs less to run and move, partly because
@@ -485,7 +488,7 @@ export function TrajectoryView({
                         size={14}
                         weight="fill"
                         className={w.level === "risk" ? "text-error" : "text-warning"}
-                      />
+                      aria-hidden="true" />
                     )}
                     {w.title}
                   </p>

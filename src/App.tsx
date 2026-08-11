@@ -6,7 +6,7 @@
  * indirection without removing a single prop.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Barbell,
   ChartLineUp,
@@ -49,9 +49,17 @@ const RANGES: { value: RangeKey; label: string }[] = [
   { value: "all", label: "ALL" },
 ];
 
+const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
+
+/** Reads the tab out of the URL hash so a view can be linked to and survives a reload. */
+function tabFromHash(): Tab {
+  const h = window.location.hash.replace(/^#\/?/, "");
+  return TAB_IDS.has(h) ? (h as Tab) : "overview";
+}
+
 export default function App() {
   const [dataset, setDataset] = useState<GarminDataset>(() => buildDemoDataset());
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTabState] = useState<Tab>(tabFromHash);
   const [range, setRange] = useState<RangeKey>("90d");
   const [units, setUnits] = useState<UnitSystem>("metric");
   const [importing, setImporting] = useState(false);
@@ -62,8 +70,27 @@ export default function App() {
   const setProfile = (patch: Partial<UserProfile>) =>
     setDataset((d) => ({ ...d, profile: { ...d.profile, ...patch } }));
 
+  const setTab = useCallback((t: Tab) => {
+    setTabState(t);
+    window.history.replaceState(null, "", `#${t}`);
+  }, []);
+
+  // Keeps back/forward and hand-edited URLs in sync with the visible tab.
+  useEffect(() => {
+    const onHashChange = () => setTabState(tabFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   return (
     <div className="deck-grid min-h-dvh">
+      <a
+        href="#deck-panel"
+        className="sr-only rounded-full bg-load px-4 py-2 text-[13px] font-semibold text-on-load focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50"
+      >
+        Skip to dashboard
+      </a>
+
       <Header
         dataset={dataset}
         range={range}
@@ -88,7 +115,14 @@ export default function App() {
           </div>
         )}
 
-        <div key={tab} className="animate-in-up">
+        <div
+          key={tab}
+          id="deck-panel"
+          role="tabpanel"
+          aria-labelledby={`tab-${tab}`}
+          tabIndex={-1}
+          className="animate-in-up scroll-mt-32 focus:outline-none"
+        >
           {tab === "overview" && <OverviewView deck={deck} dataset={dataset} units={units} />}
           {tab === "trajectory" && (
             <TrajectoryView deck={deck} dataset={dataset} units={units} />
@@ -139,7 +173,7 @@ function Header({
       <div className="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-line-strong bg-raised">
-            <Gauge size={17} weight="fill" className="text-load" />
+            <Gauge size={17} weight="fill" className="text-load" aria-hidden="true" />
           </div>
           <div className="min-w-0">
             <h1 className="font-display text-[15px] leading-none font-semibold tracking-tight text-ink">
@@ -178,7 +212,7 @@ function Header({
             aria-label="Profile settings"
             className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-2 text-ink-faint transition-colors hover:border-line-strong hover:text-ink-muted"
           >
-            <SlidersHorizontal size={13} weight="bold" />
+            <SlidersHorizontal size={13} weight="bold" aria-hidden="true" />
             <span className="eyebrow hidden sm:inline">Profile</span>
           </button>
 
@@ -186,7 +220,7 @@ function Header({
             onClick={onImport}
             className="flex items-center gap-1.5 rounded-full bg-load px-3 py-2 text-on-load transition-opacity hover:opacity-90"
           >
-            <DownloadSimple size={13} weight="bold" />
+            <DownloadSimple size={13} weight="bold" aria-hidden="true" />
             <span className="eyebrow">Import</span>
           </button>
         </div>
@@ -197,28 +231,68 @@ function Header({
 
 /* ── nav ────────────────────────────────────────────────────────────────── */
 
+/**
+ * Section tabs.
+ *
+ * Implements the full tab pattern rather than just the look: roving tabindex so
+ * the group is one stop in the tab order, arrow keys to move between tabs, and
+ * `aria-controls` pointing at the real panel. Without the roving tabindex a
+ * keyboard user has to press Tab five times to get past the navigation on every
+ * single page.
+ */
 function Nav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!dir && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+
+    const i = TABS.findIndex((t) => t.id === tab);
+    const next =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? TABS.length - 1
+          : (i + dir + TABS.length) % TABS.length;
+
+    setTab(TABS[next].id);
+    document.getElementById(`tab-${TABS[next].id}`)?.focus();
+  };
+
   return (
     <nav className="sticky top-[57px] z-20 mb-4 border-b border-line bg-base/85 backdrop-blur-md">
       <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-6">
-        <div role="tablist" aria-label="Sections" className="flex gap-1 overflow-x-auto">
+        <div
+          role="tablist"
+          aria-label="Dashboard sections"
+          onKeyDown={onKeyDown}
+          className="flex gap-1 overflow-x-auto"
+        >
           {TABS.map((t) => {
             const active = t.id === tab;
             return (
               <button
                 key={t.id}
+                id={`tab-${t.id}`}
                 role="tab"
+                type="button"
                 aria-selected={active}
+                aria-controls="deck-panel"
+                tabIndex={active ? 0 : -1}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "relative flex shrink-0 items-center gap-2 px-3 py-3 transition-colors",
+                  "relative flex shrink-0 touch-manipulation items-center gap-2 px-3 py-3 transition-colors",
                   active ? "text-ink" : "text-ink-faint hover:text-ink-muted",
                 )}
               >
-                <span className={active ? "text-load" : undefined}>{t.icon}</span>
+                <span aria-hidden="true" className={active ? "text-load" : undefined}>
+                  {t.icon}
+                </span>
                 <span className="text-[13px] font-medium">{t.label}</span>
                 {active && (
-                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-load" />
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-load"
+                  />
                 )}
               </button>
             );
@@ -265,7 +339,7 @@ function ProfilePanel({
           aria-label="Close profile"
           className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-overlay hover:text-ink"
         >
-          <X size={15} weight="bold" />
+          <X size={15} weight="bold" aria-hidden="true" />
         </button>
       }
     >

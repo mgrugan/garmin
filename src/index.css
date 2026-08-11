@@ -122,6 +122,23 @@
     font-family: var(--font-sans);
     font-synthesis-weight: none;
     -webkit-font-smoothing: antialiased;
+    /* Kills the 300ms double-tap-zoom delay on the chip rows and tabs. */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    /* Notch/home-indicator clearance for the sticky header and footer padding. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Headings are short and often wrap to two lines; balance avoids a widow. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 
   /* Tabular figures everywhere a number is read as a measurement.

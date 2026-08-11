@@ -9,7 +9,7 @@
  * import that silently drops six months of sleep is worse than one that fails.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle,
   FileArrowUp,
@@ -38,6 +38,18 @@ export function ImportPanel({
   const [result, setResult] = useState<GarminDataset | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Escape closes, and focus moves into the dialog on open so keyboard users
+  // are not left behind on the page underneath.
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const ingest = useCallback(
     async (fileList: FileList | null) => {
@@ -81,7 +93,12 @@ export function ImportPanel({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-base/80 p-4 backdrop-blur-sm sm:items-center">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-base/80 p-4 backdrop-blur-sm sm:items-center"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -96,15 +113,17 @@ export function ImportPanel({
             </p>
           </div>
           <button
+            ref={closeRef}
+            type="button"
             onClick={onClose}
             aria-label="Close import"
             className="shrink-0 rounded-md p-1.5 text-ink-faint transition-colors hover:bg-overlay hover:text-ink"
           >
-            <X size={16} weight="bold" />
+            <X size={16} weight="bold" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="px-5 py-5">
+        <div className="px-5 py-5" aria-live="polite" aria-busy={busy}>
           {result ? (
             <ImportSummary dataset={result} onUse={() => onLoaded(result)} />
           ) : (
@@ -127,12 +146,12 @@ export function ImportPanel({
               >
                 {busy ? (
                   <>
-                    <Spinner size={24} className="animate-spin text-load" />
+                    <Spinner size={24} className="animate-spin text-load" aria-hidden="true" />
                     <p className="text-[13px] text-ink-muted">Reading your export…</p>
                   </>
                 ) : (
                   <>
-                    <FileArrowUp size={24} className="text-ink-faint" />
+                    <FileArrowUp size={24} className="text-ink-faint" aria-hidden="true" />
                     <div>
                       <p className="text-[14px] font-medium text-ink">
                         Drop your export here
@@ -142,8 +161,9 @@ export function ImportPanel({
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => inputRef.current?.click()}
-                      className="mt-1 rounded-full bg-load px-3.5 py-2 text-[13px] font-semibold text-on-load transition-opacity hover:opacity-90"
+                      className="mt-1 touch-manipulation rounded-full bg-load px-3.5 py-2 text-[13px] font-semibold text-on-load transition-opacity hover:opacity-90"
                     >
                       Choose files
                     </button>
@@ -161,7 +181,7 @@ export function ImportPanel({
 
               {error && (
                 <p className="mt-3 flex gap-2 rounded-md border border-error/30 bg-error/5 px-3.5 py-3 text-[13px] leading-relaxed text-ink-muted">
-                  <WarningCircle size={16} weight="fill" className="mt-px shrink-0 text-error" />
+                  <WarningCircle size={16} weight="fill" className="mt-px shrink-0 text-error" aria-hidden="true" />
                   <span>{error}</span>
                 </p>
               )}
@@ -204,7 +224,7 @@ function ImportSummary({ dataset, onUse }: { dataset: GarminDataset; onUse: () =
   return (
     <div className="flex flex-col gap-4">
       <p className="flex items-center gap-2 text-[14px] font-medium text-ink">
-        <CheckCircle size={17} weight="fill" className="text-success" />
+        <CheckCircle size={17} weight="fill" className="text-success" aria-hidden="true" />
         Export read successfully
       </p>
 
@@ -250,8 +270,9 @@ function ImportSummary({ dataset, onUse }: { dataset: GarminDataset; onUse: () =
       )}
 
       <button
+        type="button"
         onClick={onUse}
-        className="rounded-full bg-load px-4 py-2.5 text-[14px] font-semibold text-on-load transition-opacity hover:opacity-90"
+        className="touch-manipulation rounded-full bg-load px-4 py-2.5 text-[14px] font-semibold text-on-load transition-opacity hover:opacity-90"
       >
         Load this data
       </button>

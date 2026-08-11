@@ -18,6 +18,7 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  "aria-label": ariaLabel,
   ...props
 }: SliderPrimitive.Root.Props) {
   const _values = Array.isArray(value)
@@ -34,6 +35,7 @@ function Slider({
       value={value}
       min={min}
       max={max}
+      aria-label={ariaLabel}
       thumbAlignment="edge"
       {...props}
     >
@@ -55,6 +57,11 @@ function Slider({
           <SliderPrimitive.Thumb
             data-slot="slider-thumb"
             key={index}
+            /* Base UI puts the real control in a native <input type="range">
+               inside the thumb. An aria-label on Root lands on the wrapping
+               group, leaving that input unnamed — getAriaLabel is the supported
+               way to name the thing a screen reader actually focuses. */
+            getAriaLabel={ariaLabel ? () => String(ariaLabel) : undefined}
             /* after:-inset-2 widens the hit target to 40px without growing the
                mark — these get dragged on touch screens. */
             className="relative block size-4 shrink-0 cursor-grab rounded-full border-2 border-base bg-ink shadow-[0_0_10px_-2px_var(--color-load)] transition-[box-shadow,transform] select-none after:absolute after:-inset-2 hover:scale-110 focus-visible:ring-2 focus-visible:ring-load focus-visible:ring-offset-2 focus-visible:ring-offset-raised focus-visible:outline-hidden active:cursor-grabbing disabled:pointer-events-none disabled:opacity-50"

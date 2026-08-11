@@ -28,10 +28,10 @@ const CATEGORY_META: Record<
   InsightCategory,
   { label: string; icon: React.ReactNode }
 > = {
-  training: { label: "Training", icon: <Barbell size={14} weight="fill" /> },
-  recovery: { label: "Recovery", icon: <Moon size={14} weight="fill" /> },
-  body: { label: "Body", icon: <Scales size={14} weight="fill" /> },
-  consistency: { label: "Consistency", icon: <Heartbeat size={14} weight="fill" /> },
+  training: { label: "Training", icon: <Barbell size={14} weight="fill" aria-hidden="true" /> },
+  recovery: { label: "Recovery", icon: <Moon size={14} weight="fill" aria-hidden="true" /> },
+  body: { label: "Body", icon: <Scales size={14} weight="fill" aria-hidden="true" /> },
+  consistency: { label: "Consistency", icon: <Heartbeat size={14} weight="fill" aria-hidden="true" /> },
 };
 
 const FILTERS: { value: InsightCategory | "all"; label: string }[] = [
@@ -65,10 +65,11 @@ export function InsightsView({ deck }: { deck: Deck }) {
             {FILTERS.map((f) => (
               <button
                 key={f.value}
+                type="button"
                 onClick={() => setFilter(f.value)}
                 aria-pressed={filter === f.value}
                 className={cn(
-                  "eyebrow rounded-full px-2.5 py-1.5 transition-colors",
+                  "eyebrow touch-manipulation rounded-full px-2.5 py-1.5 transition-colors",
                   filter === f.value
                     ? "bg-load text-on-load"
                     : "text-ink-faint hover:bg-overlay hover:text-ink-muted",
@@ -112,9 +113,9 @@ function InsightCard({ insight }: { insight: Insight }) {
   const meta = CATEGORY_META[insight.category];
 
   const tone = {
-    good: { border: "border-l-success", icon: <CheckCircle size={15} weight="fill" className="text-success" /> },
-    warn: { border: "border-l-warning", icon: <Warning size={15} weight="fill" className="text-warning" /> },
-    risk: { border: "border-l-error", icon: <WarningOctagon size={15} weight="fill" className="text-error" /> },
+    good: { border: "border-l-success", icon: <CheckCircle size={15} weight="fill" className="text-success" aria-hidden="true" /> },
+    warn: { border: "border-l-warning", icon: <Warning size={15} weight="fill" className="text-warning" aria-hidden="true" /> },
+    risk: { border: "border-l-error", icon: <WarningOctagon size={15} weight="fill" className="text-error" aria-hidden="true" /> },
   }[insight.tone];
 
   return (

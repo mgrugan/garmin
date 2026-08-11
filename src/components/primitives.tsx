@@ -166,6 +166,14 @@ const ACCENT_TEXT: Record<AccentName, string> = {
 
 /* ── controls ───────────────────────────────────────────────────────────── */
 
+/**
+ * Segmented single-select — range, units, insight category.
+ *
+ * Deliberately NOT `role="tablist"`. These pick a value; they do not reveal
+ * panels, and tab semantics promise a `tabpanel` with `aria-controls` that does
+ * not exist here. A labelled group of `aria-pressed` toggles describes what
+ * these actually are, and screen readers announce the state correctly.
+ */
 export function ChipRow<T extends string>({
   options,
   value,
@@ -179,7 +187,7 @@ export function ChipRow<T extends string>({
 }) {
   return (
     <div
-      role="tablist"
+      role="group"
       aria-label={ariaLabel}
       className="flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface p-1"
     >
@@ -188,11 +196,11 @@ export function ChipRow<T extends string>({
         return (
           <button
             key={o.value}
-            role="tab"
-            aria-selected={active}
+            type="button"
+            aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "eyebrow rounded-full px-2.5 py-1.5 transition-colors",
+              "eyebrow touch-manipulation rounded-full px-2.5 py-1.5 transition-colors",
               active
                 ? "bg-load text-on-load"
                 : "text-ink-faint hover:bg-overlay hover:text-ink-muted",
